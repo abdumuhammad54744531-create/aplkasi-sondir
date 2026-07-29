@@ -1,0 +1,16 @@
+{
+  "name": "laboratorium/sondir",
+  "description": "Sistem Informasi Pengujian Sondir",
+  "type": "project",
+  "require": {
+    "php": ">=8.2",
+    "dompdf/dompdf": "^3.1",
+    "phpoffice/phpspreadsheet": "^5.1",
+    "endroid/qr-code": "^6.0"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true
+  }
+}
+

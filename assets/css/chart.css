@@ -1,0 +1,88 @@
+.sondir-chart-card {
+    overflow: hidden;
+    border-color: #d5e2ed;
+}
+
+.sondir-chart-card .card-header {
+    min-height: 72px;
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom-color: #dce6ee;
+}
+
+.chart-axis-hint {
+    padding: 5px 8px;
+    color: #60758a;
+    background: #f1f6fa;
+    border-radius: 7px;
+    font-size: .68rem;
+    white-space: nowrap;
+}
+
+.chart-series-legend {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #60758a;
+    font-size: .68rem;
+    white-space: nowrap;
+}
+
+.chart-series-legend span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chart-series-legend i {
+    width: 14px;
+    height: 3px;
+    display: inline-block;
+    border-radius: 4px;
+}
+
+.series-qc i { background: #1769aa; }
+.series-tf i { background: #e58a19; }
+.combined-qc-tf-chart .qc-axis-title,.combined-qc-tf-chart .qc-axis-label { fill:#1769aa; }
+.combined-qc-tf-chart .tf-axis-title,.combined-qc-tf-chart .tf-axis-label { fill:#c66d07; }
+.combined-qc-tf-chart .qc-axis-line { stroke:#1769aa; }
+.combined-qc-tf-chart .tf-axis-line { stroke:#e58a19; }
+
+.sondir-chart-card .card-body { padding: 8px 10px 12px; }
+
+.sondir-chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    overflow: visible;
+}
+
+.chart-plot-background { fill: #fbfdff; stroke: #ccd9e4; stroke-width: 1; }
+.chart-grid-line { stroke: #dce5ed; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-axis-line { stroke: #6f8497; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.chart-tick-label { fill: #526b80; font-family: Inter,system-ui,sans-serif; font-size: 11px; }
+.chart-axis-title { fill: #29465f; font-family: Inter,system-ui,sans-serif; font-size: 12px; font-weight: 700; }
+.chart-profile-line { stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.chart-profile-point { stroke-width: 1.8; vector-effect: non-scaling-stroke; transition: r .12s,fill .12s; }
+.chart-profile-point:hover { r: 5.5px; fill: #fff7d6; }
+
+@media (max-width: 767px) {
+    .sondir-chart-card .card-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+}
+
+@media print {
+    .sondir-chart-grid>.col-xl-6 {
+        width: 50%;
+        break-inside: avoid;
+    }
+
+    .sondir-chart-svg { max-height: 360px; }
+    .sondir-chart-card { box-shadow: none; }
+}

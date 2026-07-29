@@ -1,0 +1,38 @@
+# Sistem Informasi Pengujian Sondir
+
+Aplikasi PHP native untuk pengelolaan laboratorium, klien, proyek, alat, titik pengujian, input dan perhitungan sondir, grafik, pemeriksaan, laporan PDF, audit, dan backup.
+
+## Menjalankan di Laragon
+
+1. Pastikan folder proyek berada di `C:\laragon\www\Sondir`.
+2. Jalankan Laragon, lalu klik **Start All**.
+3. Buka Terminal Laragon dan impor `database/sondir.sql`, kemudian `database/sample-data.sql` melalui HeidiSQL atau:
+   `mysql -u root < database/sondir.sql`
+   `mysql -u root db_sondir < database/sample-data.sql`
+4. Dependensi telah disiapkan dengan Composer. Jika folder `vendor` belum ada, jalankan `composer install`.
+5. Klik **Menu > www > Sondir**, atau buka `http://sondir.test`. Fallback: `http://localhost/Sondir`.
+6. Login awal memakai username `admin` dan password `admin123`, lalu segera ganti password.
+
+## Konfigurasi database
+
+Nilai default adalah host `127.0.0.1`, database `db_sondir`, user `root`, dan password kosong. Untuk server lain, gunakan environment variable `SONDIR_DB_HOST`, `SONDIR_DB_PORT`, `SONDIR_DB_NAME`, `SONDIR_DB_USER`, dan `SONDIR_DB_PASS`.
+
+## Rumus SNI 2827:2008
+
+- `Kw = Tw - Cw`
+- `qc = Cw × (Api / Ac) × faktor kalibrasi konus`
+- `fs = Kw × (Api / As) × faktor kalibrasi total`
+- `Tf = Tf sebelumnya + (fs × interval pembacaan dalam cm)`
+- `Rf = (fs / qc) × 100`, atau nol jika qc nol
+
+Faktor rumus dapat dikelola pada menu **Rumus & Pengaturan**.
+
+Template Excel dapat diunduh dari halaman input pengujian. Impor membaca kolom `Kedalaman`, `Cw`, `Tw`, `Jenis Tanah`, dan `Keterangan`; data baru disimpan setelah pengguna memeriksa preview dan menekan konfirmasi.
+
+Pada menu **Titik Sondir**, field **Jumlah sondir** dapat membuat beberapa titik sekaligus. Setiap titik tampil sebagai tab pada halaman input pengujian dan memiliki kepala data, koordinat manual, lokasi perangkat, serta pemilihan koordinat melalui peta. Tabel input mendukung paste beberapa baris langsung dari Excel dengan urutan `Kedalaman`, `Cw`, `Tw`, `Jenis Tanah`, dan `Catatan`.
+
+## Keamanan dan deployment
+
+Semua proses tulis memakai prepared statement, CSRF, session timeout, pembatasan login, dan audit log. Folder uploads memblokir eksekusi PHP. Di shared hosting, arahkan document root ke folder aplikasi, impor database, jalankan `composer install --no-dev --optimize-autoloader`, atur kredensial database, dan pastikan `uploads` serta `storage/backups` dapat ditulis oleh PHP.
+
+Untuk membuat PDF, buka menu **Laporan**, lalu pilih **PDF**. Untuk backup SQL, Super Admin membuka menu **Backup**. Restore sengaja dilakukan manual melalui alat administrasi database agar tidak dapat dipicu tanpa verifikasi.

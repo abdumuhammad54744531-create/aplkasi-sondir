@@ -1,0 +1,4 @@
+<?php
+require dirname(__DIR__).'/config/bootstrap.php';require_role('super_admin');$rows=$pdo->query('SELECT a.*,u.nama_lengkap FROM audit_log a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC LIMIT 200')->fetchAll();$pageTitle='Audit Log';require APP_ROOT.'/includes/header.php';?>
+<div class="card"><div class="card-header bg-white py-3"><b>Riwayat Perubahan</b></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aktivitas</th><th>Tabel</th><th>ID</th><th>IP</th></tr></thead><tbody><?php foreach($rows as $r):?><tr><td><?=tanggal_id($r['created_at'],true)?></td><td><?=e($r['nama_lengkap']?:'Sistem')?></td><td><?=e($r['aktivitas'])?></td><td><?=e($r['nama_tabel'])?></td><td><?=e($r['data_id'])?></td><td><?=e($r['alamat_ip'])?></td></tr><?php endforeach;?></tbody></table></div></div><?php require APP_ROOT.'/includes/footer.php';
+

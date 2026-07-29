@@ -1,0 +1,22 @@
+.page-owner-identity {
+    flex: 0 1 390px;
+}
+
+@media (max-width: 991px) {
+    .app-main > .navbar {
+        flex-wrap: wrap;
+    }
+
+    .page-owner-identity {
+        display: block !important;
+        order: 4;
+        flex-basis: 100%;
+        width: 100%;
+        padding: 7px 0 2px;
+        border-top: 1px solid #edf1f5;
+    }
+
+    .page-owner-identity small {
+        display: block !important;
+    }
+}

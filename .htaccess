@@ -1,0 +1,6 @@
+Options -Indexes
+DirectoryIndex index.php
+<FilesMatch "^(\.env|composer\.(json|lock)|.*\.log|.*\.sql)$">
+  Require all denied
+</FilesMatch>
+
