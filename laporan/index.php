@@ -3,6 +3,8 @@ declare(strict_types=1);
 require dirname(__DIR__).'/config/bootstrap.php';
 require_login();
 require __DIR__.'/_report.php';
+require_once APP_ROOT.'/includes/ReportReadinessService.php';
+$readinessService=new ReportReadinessService($pdo);
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
     require_role(['super_admin','pemeriksa']);
@@ -12,6 +14,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $note=trim((string)($_POST['catatan']??''));
     $newStatus=['setujui'=>'disetujui','revisi'=>'perlu_revisi'][$decision]??null;
     if(!$projectId||!$newStatus)exit('Keputusan tidak valid');
+    if($newStatus==='disetujui'){$readiness=$readinessService->evaluate($projectId);if($readiness['errors']>0){flash('danger','Laporan belum dapat disahkan: terdapat '.$readiness['errors'].' pemeriksaan fatal.');redirect('laporan/index.php');}}
 
     $q=$pdo->prepare("SELECT id FROM titik_sondir WHERE proyek_id=? AND status IN('menunggu_pemeriksaan','perlu_revisi','disetujui')");
     $q->execute([$projectId]);
@@ -55,6 +58,7 @@ $rows=$pdo->query(
 foreach($rows as &$row){
     $statuses=array_filter(explode(',',(string)$row['status_titik']));
     $row['report_status']=report_status(array_map(fn($status)=>['status'=>$status],$statuses));
+    $row['readiness']=$readinessService->evaluate((int)$row['id']);
 }
 unset($row);
 
@@ -73,7 +77,7 @@ require APP_ROOT.'/includes/header.php';
 </div>
 <div class="report-scope"><i class="bi bi-journals me-2"></i><b>Satu proyek = satu laporan.</b> Jumlah bagian Sondir di dalam PDF mengikuti jumlah titik yang tersimpan pada proyek.</div>
 <div class="card report-project-card"><div class="table-responsive"><table class="table align-middle mb-0">
-<thead><tr><th>Proyek</th><th>Pemohon</th><th>Cakupan laporan</th><th>Data maksimum</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
+<thead><tr><th>Proyek</th><th>Pemohon</th><th>Cakupan laporan</th><th>Data maksimum</th><th>Kesiapan</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
 <tbody>
 <?php foreach($rows as $row):?>
 <tr>
@@ -81,6 +85,7 @@ require APP_ROOT.'/includes/header.php';
   <td><?=e($row['nama_klien'])?></td>
   <td><span class="report-metric"><?=(int)$row['jumlah_titik']?> titik sondir</span><small class="d-block text-secondary"><?=(int)$row['jumlah_baris']?> baris data · seluruh grafik dan tabel</small></td>
   <td><span class="report-metric"><?=report_number((float)$row['kedalaman_max'],2)?> m</span><small>qc <?=report_number((float)$row['qc_max'],0)?> kg/cm²</small></td>
+  <td><div class="progress" style="height:8px;min-width:110px"><div class="progress-bar <?=$row['readiness']['errors']?'bg-danger':($row['readiness']['warnings']?'bg-warning':'bg-success')?>" style="width:<?=$row['readiness']['score']?>%"></div></div><small><b><?=$row['readiness']['score']?>%</b> · <?=e($row['readiness']['category'])?></small></td>
   <td><?=status_badge((string)$row['report_status'])?></td>
   <td class="text-end text-nowrap">
     <a class="btn btn-sm btn-primary" target="_blank" href="<?=url('laporan/cetak-pdf.php?proyek_id='.(int)$row['id'])?>"><i class="bi bi-file-earmark-pdf me-1"></i> Laporan lengkap</a>
@@ -90,7 +95,7 @@ require APP_ROOT.'/includes/header.php';
   </td>
 </tr>
 <?php endforeach;?>
-<?php if(!$rows):?><tr><td colspan="6"><div class="empty-state"><i class="bi bi-file-earmark-text"></i><strong>Belum ada proyek dengan titik sondir</strong><span>Tambahkan titik dan data pengujian terlebih dahulu.</span></div></td></tr><?php endif;?>
+<?php if(!$rows):?><tr><td colspan="7"><div class="empty-state"><i class="bi bi-file-earmark-text"></i><strong>Belum ada proyek dengan titik sondir</strong><span>Tambahkan titik dan data pengujian terlebih dahulu.</span></div></td></tr><?php endif;?>
 </tbody></table></div></div>
 <?php foreach($rows as $row):?>
 <?php if(can(['super_admin','pemeriksa'])&&in_array($row['report_status'],['menunggu_pemeriksaan','perlu_revisi'],true)):?>

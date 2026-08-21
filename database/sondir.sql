@@ -42,8 +42,8 @@ CREATE TABLE titik_sondir (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE hasil_sondir (
  id BIGINT AUTO_INCREMENT PRIMARY KEY,titik_sondir_id INT NOT NULL,nomor INT NOT NULL,kedalaman DECIMAL(10,3) NOT NULL,bacaan_konus DECIMAL(15,4) DEFAULT 0,bacaan_total DECIMAL(15,4) DEFAULT 0,
- qc DECIMAL(15,4) DEFAULT 0,hambatan_total DECIMAL(15,4) DEFAULT 0,fs DECIMAL(15,4) DEFAULT 0,jhp DECIMAL(15,4) DEFAULT 0,friction_ratio DECIMAL(15,4) DEFAULT 0,satuan_tekanan VARCHAR(30),
- jenis_tanah VARCHAR(150),keterangan TEXT,status_validasi ENUM('valid','peringatan','tidak_valid') DEFAULT 'valid',pesan_validasi TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NULL,
+ qc DECIMAL(15,4) DEFAULT 0,qc_mpa DECIMAL(15,6) NULL,hambatan_total DECIMAL(15,4) DEFAULT 0,fs DECIMAL(15,4) DEFAULT 0,jhp DECIMAL(15,4) DEFAULT 0,friction_ratio DECIMAL(15,4) DEFAULT 0,satuan_tekanan VARCHAR(30),
+ zona_sbt TINYINT UNSIGNED NULL,batas_zona TINYINT(1) NOT NULL DEFAULT 0,versi_klasifikasi VARCHAR(80) NULL,jenis_tanah VARCHAR(150),keterangan TEXT,status_validasi ENUM('valid','peringatan','tidak_valid') DEFAULT 'valid',pesan_validasi TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NULL,
  UNIQUE KEY unik_kedalaman(titik_sondir_id,kedalaman),FOREIGN KEY(titik_sondir_id) REFERENCES titik_sondir(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE klasifikasi_tanah (
@@ -71,8 +71,16 @@ CREATE TABLE pengaturan_rumus (
 CREATE TABLE pengaturan_laporan (
  id TINYINT PRIMARY KEY DEFAULT 1,kop_nama VARCHAR(200) NOT NULL,kop_subjudul VARCHAR(200),kop_alamat TEXT,
  judul_laporan VARCHAR(200) NOT NULL,font_family VARCHAR(50) DEFAULT 'DejaVu Sans',font_size DECIMAL(4,1) DEFAULT 9.2,
+ font_body_family VARCHAR(50) DEFAULT 'DejaVu Sans',font_heading_family VARCHAR(50) DEFAULT 'DejaVu Sans',font_table_family VARCHAR(50) DEFAULT 'DejaVu Sans',font_cover_family VARCHAR(50) DEFAULT 'DejaVu Serif',
+ font_body_size DECIMAL(4,1) DEFAULT 9.2,font_heading_size DECIMAL(4,1) DEFAULT 13.0,font_subheading_size DECIMAL(4,1) DEFAULT 11.0,font_table_size DECIMAL(4,1) DEFAULT 6.4,font_caption_size DECIMAL(4,1) DEFAULT 8.0,font_cover_size DECIMAL(4,1) DEFAULT 27.0,line_height DECIMAL(3,2) DEFAULT 1.48,
+ margin_top DECIMAL(4,1) DEFAULT 25.0,margin_right DECIMAL(4,1) DEFAULT 15.0,margin_bottom DECIMAL(4,1) DEFAULT 18.0,margin_left DECIMAL(4,1) DEFAULT 15.0,map_type VARCHAR(20) DEFAULT 'satellite',
+ show_map TINYINT(1) DEFAULT 1,show_sbt_chart TINYINT(1) DEFAULT 1,sbt_show_connection_line TINYINT(1) DEFAULT 1,sbt_line_style VARCHAR(12) DEFAULT 'solid',show_equipment TINYINT(1) DEFAULT 1,show_foundation TINYINT(1) DEFAULT 1,show_documentation TINYINT(1) DEFAULT 1,
  warna_utama VARCHAR(7) DEFAULT '#173B61',warna_aksen VARCHAR(7) DEFAULT '#F4B400',gaya_kop VARCHAR(30) DEFAULT 'formal',
- logo_path VARCHAR(255),footer_text VARCHAR(255),updated_by INT NULL,updated_at DATETIME NULL,
+ logo_path VARCHAR(255),logo_left_path VARCHAR(255),logo_right_path VARCHAR(255),logo_left_position VARCHAR(12) DEFAULT 'left',logo_right_position VARCHAR(12) DEFAULT 'right',
+ logo_left_width DECIMAL(4,1) DEFAULT 18,logo_left_height DECIMAL(4,1),logo_left_x DECIMAL(4,1) DEFAULT 0,logo_left_y DECIMAL(4,1) DEFAULT 0,logo_right_width DECIMAL(4,1) DEFAULT 18,logo_right_height DECIMAL(4,1),logo_right_x DECIMAL(4,1) DEFAULT 0,logo_right_y DECIMAL(4,1) DEFAULT 0,
+ header_lines_enabled TINYINT(1) DEFAULT 1,header_lines LONGTEXT,header_double_line TINYINT(1) DEFAULT 1,header_line_1_width DECIMAL(4,2) DEFAULT .8,header_line_2_width DECIMAL(4,2) DEFAULT .3,header_line_gap DECIMAL(4,2) DEFAULT .8,header_to_line_gap DECIMAL(4,2) DEFAULT 2,line_to_content_gap DECIMAL(4,2) DEFAULT 4,
+ examiner_address TEXT,examiner_city VARCHAR(100),examiner_province VARCHAR(100),examiner_postal_code VARCHAR(20),examiner_phone VARCHAR(60),examiner_email VARCHAR(120),examiner_website VARCHAR(160),signer_name VARCHAR(160),signer_position VARCHAR(160),signer_identity VARCHAR(100),signature_path VARCHAR(255),stamp_path VARCHAR(255),preface_template LONGTEXT,
+ footer_text VARCHAR(255),updated_by INT NULL,updated_at DATETIME NULL,
  FOREIGN KEY(updated_by) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE akun_pemohon (

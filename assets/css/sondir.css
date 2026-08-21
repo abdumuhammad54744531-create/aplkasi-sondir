@@ -169,6 +169,27 @@
     background: #d8dde2;
 }
 
+.spreadsheet .qc-mpa,.spreadsheet .soil-zone-cell {
+    min-width: 86px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.sbt-zone-badge,.sbt-zone-outside {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: .22rem .48rem;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.sbt-zone-badge { background: color-mix(in srgb,var(--zone-color) 25%,white);border:1px solid var(--zone-color);color:#17324d; }
+.sbt-zone-outside { background:#eef1f4;border:1px solid #9aa6b2;color:#5b6773; }
+.soil-zone-cell small { display:block;margin-top:3px;color:#9a3412;font-size:.58rem;white-space:nowrap; }
+
 .spreadsheet .soil-layer-start {
     border-top: 2px solid #536170 !important;
 }

@@ -9,13 +9,24 @@ Aplikasi PHP native untuk pengelolaan laboratorium, klien, proyek, alat, titik p
 3. Buka Terminal Laragon dan impor `database/sondir.sql`, kemudian `database/sample-data.sql` melalui HeidiSQL atau:
    `mysql -u root < database/sondir.sql`
    `mysql -u root db_sondir < database/sample-data.sql`
-4. Dependensi telah disiapkan dengan Composer. Jika folder `vendor` belum ada, jalankan `composer install`.
-5. Klik **Menu > www > Sondir**, atau buka `http://sondir.test`. Fallback: `http://localhost/Sondir`.
-6. Login awal memakai username `admin` dan password `admin123`, lalu segera ganti password.
+4. Jalankan `php database/upgrade-professional.php`, lalu `php database/recalculate-canonical.php`. Migration bersifat additive dan tidak melakukan `DROP` tabel/data.
+5. Dependensi telah disiapkan dengan Composer. Jika folder `vendor` belum ada, jalankan `composer install`.
+6. Klik **Menu > www > Sondir**, atau buka `http://sondir.test`. Fallback: `http://localhost/Sondir`.
+7. Login awal memakai username `admin` dan password `admin123`, lalu segera ganti password.
 
 ## Konfigurasi database
 
 Nilai default adalah host `127.0.0.1`, database `db_sondir`, user `root`, dan password kosong. Untuk server lain, gunakan environment variable `SONDIR_DB_HOST`, `SONDIR_DB_PORT`, `SONDIR_DB_NAME`, `SONDIR_DB_USER`, dan `SONDIR_DB_PASS`.
+
+## Upgrade profesional dan traceability
+
+- Hasil audit dan gap analysis: `docs/AUDIT-UPGRADE-SONDIR.md`.
+- Master metode dan referensi: menu **Metode & Referensi**.
+- Perhitungan mechanical sondir: `includes/MechanicalSondirCalculator.php`.
+- Konversi canonical kPa/MPa: `includes/UnitConversionService.php`.
+- Validasi hijau/kuning/merah: `includes/SondirValidationService.php`.
+- Report readiness 0-100%: `includes/ReportReadinessService.php`.
+- Uji manual: `php tests/mechanical_calculation_test.php` dan `php tests/soil_classification_test.php`.
 
 ## Rumus SNI 2827:2008
 
@@ -27,7 +38,11 @@ Nilai default adalah host `127.0.0.1`, database `db_sondir`, user `root`, dan pa
 
 Faktor rumus dapat dikelola pada menu **Rumus & Pengaturan**.
 
-Template Excel dapat diunduh dari halaman input pengujian. Impor membaca kolom `Kedalaman`, `Cw`, `Tw`, `Jenis Tanah`, dan `Keterangan`; data baru disimpan setelah pengguna memeriksa preview dan menekan konfirmasi.
+Jenis/perilaku tanah diperkirakan dengan diagram Robertson SBT 12 zona yang sama dengan modul `SOIL QC`. Nilai native alat dipertahankan, sementara `qc_kpa`, `qc_mpa`, `fs_kpa`, dan `fs_mpa` disimpan sebagai nilai canonical; FR tetap dalam persen. Jalankan `php database/recalculate-canonical.php` untuk menghitung ulang canonical unit dan SBT tanpa mengubah raw Cw/Tw.
+
+Setiap hasil pengujian menyimpan `qc_mpa`, `zona_sbt`, penanda batas zona, dan versi klasifikasi. Ringkasan zona tampil pada menu Pengujian, detail zona tampil per kedalaman, dan kolom Zona SBT ikut dicetak pada tabel laporan.
+
+Template Excel dapat diunduh dari halaman input pengujian. Impor membaca kolom `Kedalaman`, `Cw`, dan `Tw`; qc, fs, Rf, Tf, serta SBT dihitung oleh service yang sama dengan API input. Data baru disimpan setelah preview/validasi dan tombol konfirmasi; error fatal memblokir commit.
 
 Pada menu **Titik Sondir**, field **Jumlah sondir** dapat membuat beberapa titik sekaligus. Setiap titik tampil sebagai tab pada halaman input pengujian dan memiliki kepala data, koordinat manual, lokasi perangkat, serta pemilihan koordinat melalui peta. Tabel input mendukung paste beberapa baris langsung dari Excel dengan urutan `Kedalaman`, `Cw`, `Tw`, `Jenis Tanah`, dan `Catatan`.
 

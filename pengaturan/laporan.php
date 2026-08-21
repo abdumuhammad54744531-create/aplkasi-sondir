@@ -7,111 +7,129 @@ require APP_ROOT.'/laporan/_report.php';
 report_settings_ensure($pdo);
 $lab=$pdo->query('SELECT * FROM laboratorium ORDER BY id LIMIT 1')->fetch()?:[];
 $settings=report_settings($pdo,$lab);
+$headerLines=report_header_lines($settings,$lab);
+$fontOptions=['Times New Roman','Arial','Calibri','Georgia','Garamond','Tahoma','Trebuchet MS','Verdana','DejaVu Sans','DejaVu Serif','DejaVu Sans Mono','Helvetica','Times','Courier'];
+$logoLeftPreview=$settings['logo_left_path']?url('uploads/'.ltrim((string)$settings['logo_left_path'],'/')):'';
+$logoRightPreview=$settings['logo_right_path']?url('uploads/'.ltrim((string)$settings['logo_right_path'],'/')):'';
 
-if($_SERVER['REQUEST_METHOD']==='POST'){
-    require_role('super_admin');
-    verify_csrf();
-    $font=in_array($_POST['font_family']??'',['DejaVu Sans','DejaVu Serif','DejaVu Sans Mono'],true)?$_POST['font_family']:'DejaVu Sans';
-    $style=in_array($_POST['gaya_kop']??'',['formal','minimal','balok'],true)?$_POST['gaya_kop']:'formal';
-    $primary=report_hex_color((string)($_POST['warna_utama']??''),'#173B61');
-    $accent=report_hex_color((string)($_POST['warna_aksen']??''),'#F4B400');
-    $fontSize=max(7.5,min(12,(float)($_POST['font_size']??9.2)));
-    $logoPath=(string)($settings['logo_path']??'');
-
-    if(isset($_FILES['logo'])&&($_FILES['logo']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE){
-        if($_FILES['logo']['error']!==UPLOAD_ERR_OK||$_FILES['logo']['size']>2*1024*1024){
-            flash('danger','Logo gagal diunggah atau ukurannya melebihi 2 MB.');
-            redirect('pengaturan/laporan.php');
-        }
-        $mime=(new finfo(FILEINFO_MIME_TYPE))->file($_FILES['logo']['tmp_name']);
-        $extension=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'][$mime]??null;
-        if(!$extension){
-            flash('danger','Logo harus berupa PNG, JPG, atau WebP.');
-            redirect('pengaturan/laporan.php');
-        }
-        $directory=APP_ROOT.'/uploads/report';
-        if(!is_dir($directory))mkdir($directory,0775,true);
-        $filename='logo-laporan.'.$extension;
-        if(!move_uploaded_file($_FILES['logo']['tmp_name'],$directory.'/'.$filename)){
-            flash('danger','Logo tidak dapat disimpan.');
-            redirect('pengaturan/laporan.php');
-        }
-        $logoPath='report/'.$filename;
-    }
-
-    $pdo->prepare(
-        'INSERT INTO pengaturan_laporan(id,kop_nama,kop_subjudul,kop_alamat,judul_laporan,font_family,font_size,warna_utama,warna_aksen,gaya_kop,logo_path,footer_text,updated_by,updated_at)
-         VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
-         ON DUPLICATE KEY UPDATE kop_nama=VALUES(kop_nama),kop_subjudul=VALUES(kop_subjudul),kop_alamat=VALUES(kop_alamat),
-         judul_laporan=VALUES(judul_laporan),font_family=VALUES(font_family),font_size=VALUES(font_size),warna_utama=VALUES(warna_utama),
-         warna_aksen=VALUES(warna_aksen),gaya_kop=VALUES(gaya_kop),logo_path=VALUES(logo_path),footer_text=VALUES(footer_text),
-         updated_by=VALUES(updated_by),updated_at=NOW()'
-    )->execute([
-        trim((string)$_POST['kop_nama']),trim((string)($_POST['kop_subjudul']??'')),trim((string)($_POST['kop_alamat']??'')),
-        trim((string)$_POST['judul_laporan']),$font,$fontSize,$primary,$accent,$style,$logoPath,
-        trim((string)($_POST['footer_text']??'')),(int)$_SESSION['user']['id'],
-    ]);
-    audit($pdo,'Mengubah pengaturan laporan','pengaturan_laporan',1,null,['font'=>$font,'gaya_kop'=>$style,'warna_utama'=>$primary]);
-    flash('success','Pengaturan laporan berhasil disimpan.');
-    redirect('pengaturan/laporan.php');
+function report_upload_asset(string $field,string $prefix,string $current): string
+{
+    if(!isset($_FILES[$field])||($_FILES[$field]['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_NO_FILE)return $current;
+    $file=$_FILES[$field];
+    if(($file['error']??UPLOAD_ERR_OK)!==UPLOAD_ERR_OK||($file['size']??0)>4*1024*1024)throw new RuntimeException("Berkas $prefix gagal diunggah atau melebihi 4 MB.");
+    $mime=(new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    $ext=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'][$mime]??null;
+    if(!$ext)throw new RuntimeException("Berkas $prefix harus PNG, JPG, atau WebP.");
+    $dir=APP_ROOT.'/uploads/report';
+    if(!is_dir($dir)&&!mkdir($dir,0775,true)&&!is_dir($dir))throw new RuntimeException('Folder unggahan laporan tidak dapat dibuat.');
+    $name=$prefix.'-'.date('YmdHis').'.'.$ext;
+    if(!move_uploaded_file($file['tmp_name'],$dir.'/'.$name))throw new RuntimeException("Berkas $prefix tidak dapat disimpan.");
+    return 'report/'.$name;
 }
 
-$pageTitle='Pengaturan Laporan';
-require APP_ROOT.'/includes/header.php';
+if($_SERVER['REQUEST_METHOD']==='POST'){
+    require_role('super_admin');verify_csrf();
+    try{
+        $font=function(string $key,string $fallback)use($fontOptions):string{$v=(string)($_POST[$key]??'');return in_array($v,$fontOptions,true)?$v:$fallback;};
+        $num=fn(string $key,float $default,float $min,float $max):float=>max($min,min($max,(float)($_POST[$key]??$default)));
+        $lines=[];
+        for($i=0;$i<5;$i++)$lines[]=[
+            'text'=>trim((string)($_POST['header_text'][$i]??'')),'font'=>$font('header_font_'.$i,'Times New Roman'),'size'=>$num('header_size_'.$i,$i===0?16:9,7,32),
+            'bold'=>isset($_POST['header_bold'][$i])?1:0,'italic'=>isset($_POST['header_italic'][$i])?1:0,'uppercase'=>isset($_POST['header_uppercase'][$i])?1:0,
+            'align'=>in_array($_POST['header_align'][$i]??'center',['left','center','right'],true)?$_POST['header_align'][$i]:'center','margin_top'=>$num('header_margin_top_'.$i,0,-15,30),'margin_bottom'=>$num('header_margin_bottom_'.$i,0,0,15),'line_height'=>$num('header_line_height_'.$i,1,.8,2),
+        ];
+        $logoLeft=report_upload_asset('logo_left','logo-kiri',(string)($settings['logo_left_path']?:$settings['logo_path']));
+        $logoRight=report_upload_asset('logo_right','logo-kanan',(string)$settings['logo_right_path']);
+        $signature=report_upload_asset('signature','tanda-tangan',(string)$settings['signature_path']);
+        $stamp=report_upload_asset('stamp','stempel',(string)$settings['stamp_path']);
+        $data=[
+            'id'=>1,'kop_nama'=>$lines[0]['text'],'kop_subjudul'=>$lines[1]['text'],'kop_alamat'=>$lines[2]['text'],'judul_laporan'=>trim((string)$_POST['judul_laporan']),
+            'font_family'=>$font('font_body_family','Times New Roman'),'font_size'=>$num('font_body_size',10,8,16),'font_body_family'=>$font('font_body_family','Times New Roman'),'font_heading_family'=>$font('font_heading_family','Times New Roman'),'font_table_family'=>$font('font_table_family','Times New Roman'),'font_cover_family'=>$font('font_cover_family','Times New Roman'),
+            'font_body_size'=>$num('font_body_size',10,8,16),'font_heading_size'=>$num('font_heading_size',14,10,24),'font_subheading_size'=>$num('font_subheading_size',11,9,20),'font_table_size'=>$num('font_table_size',8,5,14),'font_caption_size'=>$num('font_caption_size',8,6,14),'font_cover_size'=>$num('font_cover_size',27,20,38),'line_height'=>$num('line_height',1.45,1,2),
+            'margin_top'=>$num('margin_top',38,20,60),'margin_right'=>$num('margin_right',15,5,40),'margin_bottom'=>$num('margin_bottom',18,5,40),'margin_left'=>$num('margin_left',15,5,40),
+            'map_type'=>in_array($_POST['map_type']??'satellite',['satellite','coordinate'],true)?$_POST['map_type']:'satellite','show_map'=>isset($_POST['show_map'])?1:0,'show_sbt_chart'=>isset($_POST['show_sbt_chart'])?1:0,'sbt_show_connection_line'=>isset($_POST['sbt_show_connection_line'])?1:0,'sbt_line_style'=>in_array($_POST['sbt_line_style']??'solid',['solid','dashed'],true)?$_POST['sbt_line_style']:'solid','show_equipment'=>isset($_POST['show_equipment'])?1:0,'show_foundation'=>isset($_POST['show_foundation'])?1:0,'show_documentation'=>isset($_POST['show_documentation'])?1:0,
+            'warna_utama'=>report_hex_color((string)($_POST['warna_utama']??''),'#173B61'),'warna_aksen'=>report_hex_color((string)($_POST['warna_aksen']??''),'#F4B400'),'gaya_kop'=>in_array($_POST['gaya_kop']??'formal',['formal','minimal','balok'],true)?$_POST['gaya_kop']:'formal','logo_path'=>$logoLeft,'footer_text'=>trim((string)($_POST['footer_text']??'')),
+            'header_lines_enabled'=>isset($_POST['header_lines_enabled'])?1:0,'header_lines'=>json_encode($lines,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'header_double_line'=>isset($_POST['header_double_line'])?1:0,'header_line_1_width'=>$num('header_line_1_width',.8,.1,3),'header_line_2_width'=>$num('header_line_2_width',.3,.1,3),'header_line_gap'=>$num('header_line_gap',.8,.2,5),'header_to_line_gap'=>$num('header_to_line_gap',2,0,10),'line_to_content_gap'=>$num('line_to_content_gap',4,0,15),
+            'logo_left_path'=>$logoLeft,'logo_right_path'=>$logoRight,'logo_left_position'=>'left','logo_right_position'=>'right','logo_left_width'=>$num('logo_left_width',18,8,50),'logo_left_height'=>($_POST['logo_left_height']??'')===''?null:$num('logo_left_height',18,5,50),'logo_left_x'=>$num('logo_left_x',0,-80,80),'logo_left_y'=>$num('logo_left_y',0,-20,50),'logo_right_width'=>$num('logo_right_width',18,8,50),'logo_right_height'=>($_POST['logo_right_height']??'')===''?null:$num('logo_right_height',18,5,50),'logo_right_x'=>$num('logo_right_x',0,-80,80),'logo_right_y'=>$num('logo_right_y',0,-20,50),
+            'examiner_address'=>trim((string)($_POST['examiner_address']??'')),'examiner_city'=>trim((string)($_POST['examiner_city']??'')),'examiner_province'=>trim((string)($_POST['examiner_province']??'')),'examiner_postal_code'=>trim((string)($_POST['examiner_postal_code']??'')),'examiner_phone'=>trim((string)($_POST['examiner_phone']??'')),'examiner_email'=>trim((string)($_POST['examiner_email']??'')),'examiner_website'=>trim((string)($_POST['examiner_website']??'')),
+            'signer_name'=>trim((string)($_POST['signer_name']??'')),'signer_position'=>trim((string)($_POST['signer_position']??'')),'signer_identity'=>trim((string)($_POST['signer_identity']??'')),'signature_path'=>$signature,'stamp_path'=>$stamp,'preface_template'=>trim((string)($_POST['preface_template']??'')),'updated_by'=>(int)$_SESSION['user']['id'],
+        ];
+        $columns=array_keys($data);$params=array_map(fn($c)=>':'.$c,$columns);$updates=array_map(fn($c)=>"`$c`=VALUES(`$c`)",$columns);
+        $pdo->prepare('INSERT INTO pengaturan_laporan (`'.implode('`,`',$columns).'`,updated_at) VALUES ('.implode(',',$params).',NOW()) ON DUPLICATE KEY UPDATE '.implode(',',$updates).',updated_at=NOW()')->execute($data);
+        audit($pdo,'Mengubah pengaturan laporan model lengkap','pengaturan_laporan',1,null,['kop'=>'5 baris','logo'=>'kiri dan kanan','diagram_sbt'=>$data['show_sbt_chart']]);
+        flash('success','Pengaturan laporan lengkap berhasil disimpan.');redirect('pengaturan/laporan.php');
+    }catch(Throwable $error){flash('danger',$error->getMessage());redirect('pengaturan/laporan.php');}
+}
+
+$pageTitle='Pengaturan Laporan';require APP_ROOT.'/includes/header.php';
 ?>
 <style>
-.report-setting-preview{border:1px solid #cfdbe6;border-radius:14px;background:#fff;overflow:hidden;position:sticky;top:92px}
-.report-paper{aspect-ratio:210/297;background:#fff;margin:20px;box-shadow:0 8px 30px rgba(25,52,78,.12);padding:24px;color:#22384c}
-.report-kop-preview{min-height:70px;border-bottom:3px solid var(--report-primary);display:flex;gap:12px;align-items:center;padding:9px 4px}
-.report-kop-preview.balok{background:var(--report-primary);color:#fff;padding:12px}.report-kop-preview.minimal{border-bottom-width:1px}
-.report-kop-logo{width:52px;height:52px;object-fit:contain;background:#eef3f7;border-radius:8px}
-.report-kop-name{font-weight:800;font-size:16px}.report-kop-sub{font-size:10px;opacity:.75}
-.report-preview-title{margin-top:30px;border-left:5px solid var(--report-accent);padding:14px;background:#edf4f9;font-weight:800;color:var(--report-primary)}
+.settings-card{border:0;box-shadow:0 8px 24px rgba(24,54,82,.08)}.header-line-box{background:#f7fafc;border:1px solid #d8e2eb;border-radius:12px;padding:14px}.report-setting-preview{border:1px solid #cfdbe6;border-radius:14px;background:#fff;overflow:hidden;position:sticky;top:92px}.report-paper{aspect-ratio:210/297;background:#fff;margin:18px;box-shadow:0 8px 30px rgba(25,52,78,.12);padding:22px;color:#111}.preview-kop{position:relative;min-height:118px;text-align:center;padding:0 62px 10px;border-bottom:4px double var(--report-primary);overflow:visible}.preview-logo{position:absolute;top:3px;width:54px;height:54px;object-fit:contain;cursor:grab;touch-action:none;user-select:none;border:2px dashed transparent;border-radius:7px;z-index:4}.preview-logo:hover,.preview-logo.dragging{border-color:#0d6efd;background:rgba(13,110,253,.08)}.preview-logo.dragging{cursor:grabbing}.preview-logo.left{left:0}.preview-logo.right{right:0}.preview-line{white-space:nowrap;overflow:visible;position:relative}.preview-title{margin-top:28px;text-align:center;font-weight:800}.preview-box{border:2px solid var(--report-primary);padding:18px;margin-top:22px;text-align:center}.section-label{font-weight:800;color:#173b61}.asset-current{font-size:.78rem;color:#64748b}.drag-hint{font-size:.82rem;color:#526577;background:#eef5fb;border-radius:8px;padding:8px 10px}.position-value{font-variant-numeric:tabular-nums}
 </style>
-<div class="page-heading">
-  <div><span class="eyebrow">Laporan Proyek</span><h2>Pengaturan Laporan</h2><p>Atur kop atas, logo, identitas, warna, serta jenis dan ukuran huruf PDF.</p></div>
-  <a class="btn btn-outline-primary" href="<?=url('laporan/index.php')?>"><i class="bi bi-file-earmark-pdf me-1"></i> Daftar laporan</a>
+<div class="page-heading"><div><span class="eyebrow">Laporan Proyek</span><h2>Pengaturan Laporan Model Lengkap</h2><p>Mengikuti struktur mix-desain-beton: kop 5 baris, dua logo, tipografi, penandatangan, dan komponen khusus Sondir.</p></div><a class="btn btn-outline-primary" href="<?=url('laporan/index.php')?>"><i class="bi bi-file-earmark-pdf me-1"></i>Daftar laporan</a></div>
+<form method="post" enctype="multipart/form-data" id="reportSettingsForm" data-csrf-url="<?=url('api/csrf-token.php')?>"><?=csrf_field()?>
+<div class="row g-3"><div class="col-xl-7">
+<div class="card settings-card mb-3"><div class="card-header bg-white py-3"><span class="eyebrow">Kop Laporan</span><h5 class="mb-0">Lima baris teks yang dapat diatur terpisah</h5></div><div class="card-body">
+<div class="form-check form-switch mb-3"><input class="form-check-input preview-input" type="checkbox" name="header_lines_enabled" id="headerEnabled" <?=!empty($settings['header_lines_enabled'])?'checked':''?>><label class="form-check-label" for="headerEnabled">Tampilkan kop pada setiap halaman</label></div>
+<?php foreach($headerLines as $i=>$line):?>
+<div class="header-line-box mb-3">
+  <div class="section-label mb-2">Baris <?=$i+1?><?=$i===0?' — posisi utama kop':''?></div>
+  <div class="row g-2">
+    <div class="col-12"><input class="form-control preview-input header-text" name="header_text[]" value="<?=e($line['text']??'')?>" placeholder="Teks baris <?=$i+1?>"></div>
+    <div class="col-md-5"><label class="small text-secondary">Jenis huruf</label><select class="form-select preview-input header-font" name="header_font_<?=$i?>"><?php foreach($fontOptions as $font):?><option value="<?=e($font)?>" <?=($line['font']??'')===$font?'selected':''?>><?=e($font)?></option><?php endforeach;?></select></div>
+    <div class="col-md-2"><label class="small text-secondary">Ukuran pt</label><input class="form-control preview-input header-size" type="number" name="header_size_<?=$i?>" min="7" max="32" step=".1" value="<?=e($line['size']??9)?>"></div>
+    <div class="col-md-3"><label class="small text-secondary">Perataan</label><select class="form-select preview-input header-align" name="header_align[]"><?php foreach(['left'=>'Kiri','center'=>'Tengah','right'=>'Kanan'] as $v=>$l):?><option value="<?=$v?>" <?=($line['align']??'center')===$v?'selected':''?>><?=$l?></option><?php endforeach;?></select></div>
+    <div class="col-md-2"><label class="small text-secondary">Jarak baris</label><input class="form-control preview-input header-line-height" type="number" name="header_line_height_<?=$i?>" min=".8" max="2" step=".05" value="<?=e($line['line_height']??1)?>"></div>
+    <div class="col-md-6"><label class="form-label mb-1"><?=$i===0?'Turunkan Baris 1 dari atas kop':'Turun/naik baris'?> (mm)</label><input class="form-control preview-input header-offset" type="number" name="header_margin_top_<?=$i?>" min="-15" max="30" step=".5" value="<?=e($line['margin_top']??0)?>"><small class="text-secondary">Nilai positif turun, nilai negatif naik.</small></div>
+    <div class="col-md-6"><label class="form-label mb-1">Jarak sesudah baris (mm)</label><input class="form-control preview-input header-gap" type="number" name="header_margin_bottom_<?=$i?>" min="0" max="15" step=".5" value="<?=e($line['margin_bottom']??0)?>"></div>
+    <div class="col-md-4 form-check"><input type="checkbox" class="form-check-input preview-input header-bold" name="header_bold[<?=$i?>]" <?=!empty($line['bold'])?'checked':''?>><label class="form-check-label">Tebal</label></div>
+    <div class="col-md-4 form-check"><input type="checkbox" class="form-check-input preview-input header-italic" name="header_italic[<?=$i?>]" <?=!empty($line['italic'])?'checked':''?>><label class="form-check-label">Miring</label></div>
+    <div class="col-md-4 form-check"><input type="checkbox" class="form-check-input preview-input header-uppercase" name="header_uppercase[<?=$i?>]" <?=!empty($line['uppercase'])?'checked':''?>><label class="form-check-label">Huruf besar</label></div>
+  </div>
 </div>
-<form method="post" enctype="multipart/form-data"><?=csrf_field()?>
-<div class="row g-3">
-  <div class="col-xl-7">
-    <div class="card mb-3">
-      <div class="card-header bg-white py-3"><span class="eyebrow">Kop Atas</span><h5 class="mb-0">Identitas pada setiap halaman</h5></div>
-      <div class="card-body"><div class="row g-3">
-        <div class="col-12"><label class="form-label required">Nama kop</label><input class="form-control report-preview-input" required name="kop_nama" id="kopNama" value="<?=e($settings['kop_nama'])?>"></div>
-        <div class="col-md-6"><label class="form-label">Subjudul/instansi</label><input class="form-control report-preview-input" name="kop_subjudul" id="kopSubjudul" value="<?=e($settings['kop_subjudul'])?>"></div>
-        <div class="col-md-6"><label class="form-label">Alamat singkat</label><input class="form-control report-preview-input" name="kop_alamat" id="kopAlamat" value="<?=e($settings['kop_alamat'])?>"></div>
-        <div class="col-md-6"><label class="form-label">Model kop</label><select class="form-select report-preview-input" name="gaya_kop" id="gayaKop"><?php foreach(['formal'=>'Formal bergaris','minimal'=>'Minimal','balok'=>'Balok warna'] as $value=>$label):?><option value="<?=$value?>" <?=$settings['gaya_kop']===$value?'selected':''?>><?=$label?></option><?php endforeach;?></select></div>
-        <div class="col-md-6"><label class="form-label">Logo (maks. 2 MB)</label><input class="form-control" type="file" name="logo" accept=".png,.jpg,.jpeg,.webp,image/*"></div>
-      </div></div>
-    </div>
-    <div class="card">
-      <div class="card-header bg-white py-3"><span class="eyebrow">Tipografi dan Warna</span><h5 class="mb-0">Tampilan isi laporan</h5></div>
-      <div class="card-body"><div class="row g-3">
-        <div class="col-12"><label class="form-label required">Judul laporan</label><input class="form-control report-preview-input" required name="judul_laporan" id="judulLaporan" value="<?=e($settings['judul_laporan'])?>"></div>
-        <div class="col-md-4"><label class="form-label">Jenis huruf</label><select class="form-select report-preview-input" name="font_family" id="fontFamily"><?php foreach(['DejaVu Sans'=>'Sans — modern','DejaVu Serif'=>'Serif — formal','DejaVu Sans Mono'=>'Mono — teknis'] as $value=>$label):?><option value="<?=$value?>" <?=$settings['font_family']===$value?'selected':''?>><?=$label?></option><?php endforeach;?></select></div>
-        <div class="col-md-2"><label class="form-label">Ukuran isi</label><input class="form-control report-preview-input" type="number" min="7.5" max="12" step=".1" name="font_size" id="fontSize" value="<?=e($settings['font_size'])?>"></div>
-        <div class="col-md-3"><label class="form-label">Warna utama</label><input class="form-control form-control-color w-100 report-preview-input" type="color" name="warna_utama" id="warnaUtama" value="<?=e($settings['warna_utama'])?>"></div>
-        <div class="col-md-3"><label class="form-label">Warna aksen</label><input class="form-control form-control-color w-100 report-preview-input" type="color" name="warna_aksen" id="warnaAksen" value="<?=e($settings['warna_aksen'])?>"></div>
-        <div class="col-12"><label class="form-label">Teks kaki halaman</label><input class="form-control" name="footer_text" value="<?=e($settings['footer_text'])?>" placeholder="Nama laboratorium · universitas"></div>
-      </div></div>
-      <div class="card-footer bg-white text-end"><?php if(can('super_admin')):?><button class="btn btn-primary px-4"><i class="bi bi-check2-circle me-1"></i> Simpan pengaturan</button><?php else:?><span class="text-secondary">Hanya Super Admin yang dapat menyimpan.</span><?php endif;?></div>
-    </div>
-  </div>
-  <div class="col-xl-5">
-    <div class="report-setting-preview"><div class="card-header bg-white py-3"><b>Pratinjau tampilan</b></div>
-      <div class="report-paper" id="reportPaper" style="--report-primary:<?=e($settings['warna_utama'])?>;--report-accent:<?=e($settings['warna_aksen'])?>;font-family:'<?=e($settings['font_family'])?>'">
-        <div class="report-kop-preview <?=e($settings['gaya_kop'])?>" id="kopPreview">
-          <div class="report-kop-logo d-flex align-items-center justify-content-center"><i class="bi bi-building fs-3"></i></div>
-          <div><div class="report-kop-name" id="previewKopNama"><?=e($settings['kop_nama'])?></div><div class="report-kop-sub" id="previewKopSub"><?=e(trim($settings['kop_subjudul'].' · '.$settings['kop_alamat'],' ·'))?></div></div>
-        </div>
-        <div class="report-preview-title" id="previewTitle"><?=e($settings['judul_laporan'])?></div>
-        <p class="mt-4">Contoh isi laporan penyelidikan tanah. Lebar teks menggunakan seluruh area halaman.</p>
-      </div>
-    </div>
-  </div>
-</div></form>
+<?php endforeach;?>
+</div></div>
+<div class="card settings-card mb-3"><div class="card-header bg-white py-3"><span class="eyebrow">Garis & Logo</span><h5 class="mb-0">Dua logo dan garis kop formal</h5></div><div class="card-body"><div class="row g-3"><div class="col-md-6"><label class="form-label">Model kop</label><select class="form-select preview-input" name="gaya_kop"><option value="formal" <?=$settings['gaya_kop']==='formal'?'selected':''?>>Formal garis ganda</option><option value="minimal" <?=$settings['gaya_kop']==='minimal'?'selected':''?>>Minimal</option><option value="balok" <?=$settings['gaya_kop']==='balok'?'selected':''?>>Balok warna</option></select></div><div class="col-md-6 form-check form-switch pt-4"><input class="form-check-input preview-input" type="checkbox" name="header_double_line" id="doubleLine" <?=!empty($settings['header_double_line'])?'checked':''?>><label class="form-check-label" for="doubleLine">Gunakan garis ganda</label></div>
+<div class="col-12"><div class="drag-hint"><i class="bi bi-arrows-move me-1"></i><b>Atur dengan mouse:</b> seret logo kiri atau kanan langsung pada pratinjau A4. Nilai X dan Y di bawah akan berubah otomatis.</div></div>
+<?php foreach([['left','Logo kiri'],['right','Logo kanan']] as [$side,$label]):?>
+<div class="col-12"><div class="header-line-box"><b><?=$label?></b><div class="row g-2 mt-1">
+  <div class="col-md-6"><label class="small text-secondary">Ganti gambar</label><input class="form-control logo-file" data-side="<?=$side?>" type="file" name="logo_<?=$side?>" accept="image/png,image/jpeg,image/webp"><div class="asset-current"><?=e($settings['logo_'.$side.'_path']?:'Belum ada berkas')?></div></div>
+  <div class="col-md-3"><label class="small text-secondary">Lebar (mm)</label><input class="form-control preview-input logo-size" data-side="<?=$side?>" data-axis="width" type="number" name="logo_<?=$side?>_width" min="8" max="50" step=".5" value="<?=e($settings['logo_'.$side.'_width'])?>"></div>
+  <div class="col-md-3"><label class="small text-secondary">Tinggi (mm, kosong=otomatis)</label><input class="form-control preview-input logo-size" data-side="<?=$side?>" data-axis="height" type="number" name="logo_<?=$side?>_height" min="5" max="50" step=".5" value="<?=e($settings['logo_'.$side.'_height'])?>"></div>
+  <div class="col-md-6"><label class="small text-secondary">Posisi X (mm)</label><input id="logo_<?=$side?>_x" class="form-control preview-input logo-position-input position-value" data-side="<?=$side?>" data-axis="x" type="number" name="logo_<?=$side?>_x" min="-80" max="80" step=".5" value="<?=e($settings['logo_'.$side.'_x'])?>"></div>
+  <div class="col-md-6"><label class="small text-secondary">Posisi Y / turun (mm)</label><input id="logo_<?=$side?>_y" class="form-control preview-input logo-position-input position-value" data-side="<?=$side?>" data-axis="y" type="number" name="logo_<?=$side?>_y" min="-20" max="50" step=".5" value="<?=e($settings['logo_'.$side.'_y'])?>"></div>
+</div></div></div>
+<?php endforeach;?>
+<?php foreach([['header_line_1_width','Garis 1',.1,3],['header_line_2_width','Garis 2',.1,3],['header_line_gap','Jarak garis',.2,5],['header_to_line_gap','Kop-garis',0,10],['line_to_content_gap','Garis-isi',0,15]] as [$k,$l,$min,$max]):?><div class="col"><label class="form-label small"><?=$l?> mm</label><input class="form-control" type="number" name="<?=$k?>" min="<?=$min?>" max="<?=$max?>" step=".1" value="<?=e($settings[$k])?>"></div><?php endforeach;?></div></div></div>
+<div class="card settings-card mb-3"><div class="card-header bg-white py-3"><span class="eyebrow">A4 & Tipografi</span><h5 class="mb-0">Jenis huruf, ukuran, warna, dan margin</h5></div><div class="card-body"><div class="row g-3"><div class="col-12"><label class="form-label required">Judul laporan</label><input class="form-control preview-input" required name="judul_laporan" id="judulLaporan" value="<?=e($settings['judul_laporan'])?>"></div>
+<?php foreach([['body','Isi',8,16],['heading','Judul bab',10,24],['table','Tabel',5,14],['cover','Sampul',20,38]] as [$key,$label,$min,$max]):?><div class="col-md-8"><label class="form-label">Huruf <?=$label?></label><select class="form-select preview-input" name="font_<?=$key?>_family" id="font<?=ucfirst($key)?>Family"><?php foreach($fontOptions as $font):?><option value="<?=e($font)?>" <?=$settings['font_'.$key.'_family']===$font?'selected':''?>><?=e($font)?></option><?php endforeach;?></select></div><div class="col-md-4"><label class="form-label">Ukuran <?=$label?> (pt)</label><input class="form-control preview-input" type="number" name="font_<?=$key?>_size" id="font<?=ucfirst($key)?>Size" min="<?=$min?>" max="<?=$max?>" step=".1" value="<?=e($settings['font_'.$key.'_size'])?>"></div><?php endforeach;?>
+<div class="col-md-4"><label class="form-label">Subjudul (pt)</label><input class="form-control" type="number" name="font_subheading_size" min="9" max="20" step=".1" value="<?=e($settings['font_subheading_size'])?>"></div><div class="col-md-4"><label class="form-label">Caption (pt)</label><input class="form-control" type="number" name="font_caption_size" min="6" max="14" step=".1" value="<?=e($settings['font_caption_size'])?>"></div><div class="col-md-4"><label class="form-label">Jarak baris</label><input class="form-control preview-input" id="lineHeight" type="number" name="line_height" min="1" max="2" step=".01" value="<?=e($settings['line_height'])?>"></div>
+<?php foreach([['top','Atas',20,60],['right','Kanan',5,40],['bottom','Bawah',5,40],['left','Kiri',5,40]] as [$key,$label,$min,$max]):?><div class="col-md-3"><label class="form-label">Margin <?=$label?></label><input class="form-control" type="number" name="margin_<?=$key?>" min="<?=$min?>" max="<?=$max?>" step=".5" value="<?=e($settings['margin_'.$key])?>"></div><?php endforeach;?><div class="col-md-3"><label class="form-label">Warna utama</label><input class="form-control form-control-color w-100 preview-input" type="color" name="warna_utama" id="warnaUtama" value="<?=e($settings['warna_utama'])?>"></div><div class="col-md-3"><label class="form-label">Warna aksen</label><input class="form-control form-control-color w-100 preview-input" type="color" name="warna_aksen" id="warnaAksen" value="<?=e($settings['warna_aksen'])?>"></div><div class="col-md-6"><label class="form-label">Teks kaki halaman</label><input class="form-control" name="footer_text" value="<?=e($settings['footer_text'])?>"></div></div></div></div>
+<div class="card settings-card mb-3"><div class="card-header bg-white py-3"><span class="eyebrow">Identitas & Pengesahan</span><h5 class="mb-0">Kontak, penandatangan, dan kata pengantar</h5></div><div class="card-body"><div class="row g-3"><div class="col-12"><label class="form-label">Alamat lengkap</label><textarea class="form-control" name="examiner_address" rows="2"><?=e($settings['examiner_address'])?></textarea></div><?php foreach([['examiner_city','Kota/kabupaten'],['examiner_province','Provinsi'],['examiner_postal_code','Kode pos'],['examiner_phone','Telepon'],['examiner_email','Email'],['examiner_website','Website']] as [$k,$l]):?><div class="col-md-6"><label class="form-label"><?=$l?></label><input class="form-control" name="<?=$k?>" value="<?=e($settings[$k])?>"></div><?php endforeach;?><div class="col-md-5"><label class="form-label">Nama penandatangan</label><input class="form-control" name="signer_name" value="<?=e($settings['signer_name'])?>"></div><div class="col-md-4"><label class="form-label">Jabatan</label><input class="form-control" name="signer_position" value="<?=e($settings['signer_position'])?>"></div><div class="col-md-3"><label class="form-label">NIP/identitas</label><input class="form-control" name="signer_identity" value="<?=e($settings['signer_identity'])?>"></div><div class="col-md-6"><label class="form-label">Tanda tangan</label><input class="form-control" type="file" name="signature" accept="image/png,image/jpeg,image/webp"><div class="asset-current"><?=e($settings['signature_path']?:'Belum ada')?></div></div><div class="col-md-6"><label class="form-label">Stempel</label><input class="form-control" type="file" name="stamp" accept="image/png,image/jpeg,image/webp"><div class="asset-current"><?=e($settings['stamp_path']?:'Belum ada')?></div></div><div class="col-12"><label class="form-label">Template Kata Pengantar</label><textarea class="form-control" name="preface_template" rows="5"><?=e($settings['preface_template'])?></textarea><small class="text-secondary">Token: [PROYEK], [LOKASI], [PEMOHON], [LABORATORIUM]</small></div></div></div></div>
+<div class="card settings-card mb-3"><div class="card-header bg-white py-3"><span class="eyebrow">Isi Khusus Sondir</span><h5 class="mb-0">Peta, zonasi, dan lampiran teknis</h5></div><div class="card-body"><div class="row g-3"><div class="col-md-6"><label class="form-label">Model peta</label><select class="form-select" name="map_type"><option value="satellite" <?=$settings['map_type']==='satellite'?'selected':''?>>Citra satelit nyata</option><option value="coordinate" <?=$settings['map_type']==='coordinate'?'selected':''?>>Diagram koordinat</option></select></div><div class="col-12"><div class="row g-2"><?php foreach([['show_map','Peta lokasi'],['show_sbt_chart','Diagram Robertson SBT 12 Zona'],['show_equipment','Bagian peralatan dan identitas alat'],['show_foundation','Tabel daya dukung pondasi'],['show_documentation','Lampiran dokumentasi']] as [$key,$label]):?><div class="col-md-6"><div class="form-check form-switch border rounded p-3 ps-5"><input class="form-check-input" type="checkbox" name="<?=$key?>" id="<?=$key?>" <?=!empty($settings[$key])?'checked':''?>><label class="form-check-label" for="<?=$key?>">Tampilkan <?=$label?></label></div></div><?php endforeach;?></div></div><div class="col-12"><div class="border rounded p-3 bg-light"><div class="fw-bold mb-1">Titik Diagram Robertson SBT</div><div class="small text-secondary mb-3">Setiap titik pada PDF selalu diberi label kedalaman dalam meter.</div><div class="row g-3 align-items-end"><div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="sbt_show_connection_line" id="sbt_show_connection_line" <?=!empty($settings['sbt_show_connection_line'])?'checked':''?>><label class="form-check-label" for="sbt_show_connection_line">Hubungkan titik dengan garis</label></div></div><div class="col-md-6"><label class="form-label" for="sbt_line_style">Jenis garis penghubung</label><select class="form-select" name="sbt_line_style" id="sbt_line_style"><option value="solid" <?=$settings['sbt_line_style']==='solid'?'selected':''?>>Garis penuh</option><option value="dashed" <?=$settings['sbt_line_style']==='dashed'?'selected':''?>>Garis putus-putus</option></select></div></div></div></div></div></div><div class="card-footer bg-white text-end"><?php if(can('super_admin')):?><button class="btn btn-primary px-4"><i class="bi bi-check2-circle me-1"></i>Simpan semua pengaturan</button><?php else:?><span class="text-secondary">Hanya Super Admin yang dapat menyimpan.</span><?php endif;?></div></div>
+</div><div class="col-xl-5"><div class="report-setting-preview"><div class="card-header bg-white py-3"><b>Pratinjau A4 langsung</b><div class="small text-secondary">Seret logo dengan mouse untuk mengubah posisi X/Y.</div></div><div class="report-paper" id="reportPaper" style="--report-primary:<?=e($settings['warna_utama'])?>;--report-accent:<?=e($settings['warna_aksen'])?>"><div class="preview-kop" id="previewKop"><?php if($logoLeftPreview):?><img draggable="false" class="preview-logo left" data-side="left" src="<?=e($logoLeftPreview)?>" alt="Logo kiri"><?php else:?><div class="preview-logo left d-flex align-items-center justify-content-center" data-side="left"><i class="bi bi-building fs-2"></i></div><?php endif;?><?php if($logoRightPreview):?><img draggable="false" class="preview-logo right" data-side="right" src="<?=e($logoRightPreview)?>" alt="Logo kanan"><?php else:?><div class="preview-logo right d-flex align-items-center justify-content-center" data-side="right"><i class="bi bi-mortarboard fs-2"></i></div><?php endif;?><div id="previewLines"></div></div><div class="preview-title" id="previewTitle"></div><div class="preview-box"><b>PEKERJAAN</b><br>Contoh Proyek Penyelidikan Tanah<br><small>Peta satelit dan Diagram Robertson SBT 12 Zona</small></div><p class="mt-4">Contoh isi laporan menggunakan pengaturan huruf, warna, dan jarak baris yang dipilih.</p></div></div></div></div></form>
 <script>
-(()=>{const q=id=>document.getElementById(id),paper=q('reportPaper'),kop=q('kopPreview'),sync=()=>{paper.style.setProperty('--report-primary',q('warnaUtama').value);paper.style.setProperty('--report-accent',q('warnaAksen').value);paper.style.fontFamily=q('fontFamily').value;paper.style.fontSize=q('fontSize').value+'px';kop.className='report-kop-preview '+q('gayaKop').value;q('previewKopNama').textContent=q('kopNama').value;q('previewKopSub').textContent=[q('kopSubjudul').value,q('kopAlamat').value].filter(Boolean).join(' · ');q('previewTitle').textContent=q('judulLaporan').value};document.querySelectorAll('.report-preview-input').forEach(el=>el.addEventListener('input',sync));sync()})();
+(()=>{
+  const q=s=>document.querySelector(s),qa=s=>[...document.querySelectorAll(s)],paper=q('#reportPaper'),kop=q('#previewKop');
+  const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+  const scale=()=>kop.clientWidth/210;
+  const value=name=>Number(q(`[name="${name}"]`)?.value||0);
+  const applyLogo=side=>{
+    const logo=q(`.preview-logo[data-side="${side}"]`);if(!logo)return;
+    const x=value(`logo_${side}_x`),y=value(`logo_${side}_y`),width=value(`logo_${side}_width`),height=value(`logo_${side}_height`),factor=scale();
+    logo.style.left=side==='left'?`${x*factor}px`:'auto';logo.style.right=side==='right'?`${x*factor}px`:'auto';logo.style.top=`${y*factor}px`;logo.style.width=`${width*factor}px`;logo.style.height=height>0?`${height*factor}px`:(logo.tagName==='IMG'?'auto':`${width*factor}px`);
+  };
+  const sync=()=>{
+    paper.style.setProperty('--report-primary',q('#warnaUtama').value);paper.style.setProperty('--report-accent',q('#warnaAksen').value);paper.style.fontFamily=q('#fontBodyFamily').value;paper.style.fontSize=Math.max(9,Number(q('#fontBodySize').value))+'px';paper.style.lineHeight=q('#lineHeight').value;q('#previewTitle').textContent=q('#judulLaporan').value;q('#previewTitle').style.fontFamily=q('#fontCoverFamily').value;q('#previewTitle').style.fontSize=Math.max(18,Number(q('#fontCoverSize').value)*.72)+'px';kop.style.display=q('#headerEnabled').checked?'block':'none';kop.style.borderBottomStyle=q('#doubleLine').checked?'double':'solid';
+    const texts=qa('.header-text'),fonts=qa('.header-font'),sizes=qa('.header-size'),aligns=qa('.header-align'),offsets=qa('.header-offset'),gaps=qa('.header-gap'),heights=qa('.header-line-height'),bolds=qa('.header-bold'),italics=qa('.header-italic'),uppercases=qa('.header-uppercase'),factor=scale();
+    q('#previewLines').innerHTML=texts.map((el,i)=>{const raw=el.value,shown=uppercases[i]?.checked?raw.toUpperCase():raw,text=shown.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));return `<div class="preview-line" style="font-family:'${fonts[i].value}';font-size:${Math.max(8,Number(sizes[i].value)*.72)}px;text-align:${aligns[i].value};font-weight:${bolds[i]?.checked?'700':'400'};font-style:${italics[i]?.checked?'italic':'normal'};line-height:${heights[i].value};margin-top:${Number(offsets[i].value||0)*factor}px;margin-bottom:${Number(gaps[i].value||0)*factor}px">${text}</div>`}).join('');
+    applyLogo('left');applyLogo('right');
+  };
+  qa('.preview-input,.header-text,.header-font,.header-size,.header-align').forEach(el=>el.addEventListener('input',sync));
+  qa('.preview-logo').forEach(logo=>logo.addEventListener('pointerdown',event=>{event.preventDefault();const side=logo.dataset.side,xInput=q(`#logo_${side}_x`),yInput=q(`#logo_${side}_y`),startX=Number(xInput.value||0),startY=Number(yInput.value||0),originX=event.clientX,originY=event.clientY,factor=scale();logo.classList.add('dragging');logo.setPointerCapture(event.pointerId);const move=e=>{const dx=(e.clientX-originX)/factor,dy=(e.clientY-originY)/factor;xInput.value=(clamp(startX+(side==='right'?-dx:dx),-80,80)).toFixed(1);yInput.value=(clamp(startY+dy,-20,50)).toFixed(1);applyLogo(side)};const stop=e=>{logo.classList.remove('dragging');logo.releasePointerCapture(e.pointerId);logo.removeEventListener('pointermove',move);logo.removeEventListener('pointerup',stop);logo.removeEventListener('pointercancel',stop)};logo.addEventListener('pointermove',move);logo.addEventListener('pointerup',stop);logo.addEventListener('pointercancel',stop)}));
+  qa('.logo-file').forEach(input=>input.addEventListener('change',()=>{const file=input.files?.[0],logo=q(`.preview-logo[data-side="${input.dataset.side}"]`);if(!file||!logo)return;const reader=new FileReader();reader.onload=()=>{if(logo.tagName==='IMG')logo.src=String(reader.result);else{logo.innerHTML='';logo.style.background=`center/contain no-repeat url(${reader.result})`}};reader.readAsDataURL(file)}));
+  window.addEventListener('resize',sync);sync();
+})();
+(()=>{const form=document.getElementById('reportSettingsForm');if(!form)return;form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector('button[type="submit"],button:not([type])');if(button){button.disabled=true;button.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Memeriksa sesi...'}try{const response=await fetch(form.dataset.csrfUrl,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});if(!response.ok)throw new Error('Sesi login sudah berubah.');const data=await response.json();const input=form.querySelector('input[name="csrf_token"]');if(!input||!data.csrf_token)throw new Error('Token keamanan tidak tersedia.');input.value=data.csrf_token;HTMLFormElement.prototype.submit.call(form)}catch(error){if(button){button.disabled=false;button.innerHTML='<i class="bi bi-check2-circle me-1"></i>Simpan semua pengaturan'}if(window.Swal)Swal.fire('Sesi perlu dimuat ulang',error.message+' Silakan muat ulang halaman.','warning');else alert(error.message+' Silakan muat ulang halaman.')}})})();
 </script>
 <?php require APP_ROOT.'/includes/footer.php';?>

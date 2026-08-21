@@ -7,10 +7,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $username=trim($_POST['username']??''); $password=$_POST['password']??'';
     $key='login_'.hash('sha256',($_SERVER['REMOTE_ADDR']??'').$username);
     $attempt=$_SESSION[$key]??['count'=>0,'at'=>0];
-    if($attempt['count']>=MAX_LOGIN_ATTEMPTS && time()-$attempt['at']<900){$error='Terlalu banyak percobaan. Coba lagi dalam 15 menit.';}
+    $q=$pdo->prepare("SELECT * FROM users WHERE username=? AND status='aktif' LIMIT 1");$q->execute([$username]);$user=$q->fetch();
+    $ok=$user&&password_verify($password,$user['password']);
+    if(!$ok&&$attempt['count']>=MAX_LOGIN_ATTEMPTS && time()-$attempt['at']<900){$error='Terlalu banyak percobaan. Coba lagi dalam 15 menit.';}
     else{
-        $q=$pdo->prepare("SELECT * FROM users WHERE username=? AND status='aktif' LIMIT 1");$q->execute([$username]);$user=$q->fetch();
-        $ok=$user&&password_verify($password,$user['password']);
         $log=$pdo->prepare('INSERT INTO login_log(user_id,username,status,alamat_ip,user_agent) VALUES(?,?,?,?,?)');
         $log->execute([$user['id']??null,$username,$ok?'berhasil':'gagal',$_SERVER['REMOTE_ADDR']??'',substr($_SERVER['HTTP_USER_AGENT']??'',0,1000)]);
         if($ok){session_regenerate_id(true);$_SESSION['user']=array_intersect_key($user,array_flip(['id','nama_lengkap','username','email','level','foto']));$_SESSION[$key]=['count'=>0,'at'=>time()];$pdo->prepare('UPDATE users SET last_login=NOW() WHERE id=?')->execute([$user['id']]);redirect('dashboard.php');}

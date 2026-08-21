@@ -34,26 +34,45 @@ function next_code(PDO $pdo, string $table, string $column, string $prefix, int 
     return $prefix.str_pad((string)$n,$digits,'0',STR_PAD_LEFT);
 }
 
+const KG_CM2_TO_MPA = 0.0980665;
+
+function sondir_soil_chart_config(): array {
+    static $config;
+    if ($config === null) {
+        $path=APP_ROOT.'/config/soil_classification_zones.json';
+        $config=json_decode((string)file_get_contents($path),true,512,JSON_THROW_ON_ERROR);
+    }
+    return $config;
+}
+
 /**
- * Klasifikasi perilaku tanah mengikuti VBA referensi pada sheet SONDIR.
- * Ic = sqrt((3.47 - log10(qc))^2 + (log10(Rf) + 1.22)^2)
+ * Klasifikasi Soil Behavior Type (SBT) Robertson 1986, 12 zona.
+ * Data Sondir menyimpan qc dalam kg/cm2, sedangkan diagram memakai qc dalam MPa.
  */
 function sondir_soil_classification(float $qc, float $frictionRatio): array {
-    if ($qc <= 0 || $frictionRatio <= 0) {
-        return ['ic'=>null,'jenis'=>''];
+    if ($qc <= 0 || $frictionRatio < 0) {
+        return ['ic'=>null,'jenis'=>'','zone_number'=>null,'warna'=>'#94a3b8','boundary_flag'=>false,'qc_mpa'=>0.0,'versi'=>sondir_soil_chart_config()['version']??'unknown'];
     }
 
-    $ic=sqrt((3.47-log10($qc))**2+(log10($frictionRatio)+1.22)**2);
-    $jenis=match(true){
-        $ic<1.31=>'Pasir sangat padat / kerikil',
-        $ic<2.05=>'Pasir - pasir berlanau',
-        $ic<2.60=>'Lanau - pasir berlanau',
-        $ic<2.95=>'Lempung berlanau',
-        $ic<=3.60=>'Lempung',
-        default=>'Lempung organik / sangat lunak',
-    };
+    static $classifier;
+    $classifier??=new SoilClassifier(APP_ROOT.'/config/soil_classification_zones.json');
+    $qcMpa=$qc*KG_CM2_TO_MPA;
+    $result=$classifier->classify($qcMpa,$frictionRatio);
+    return [
+        'ic'=>null,
+        'jenis'=>$result['soil_type_id'],
+        'zone_number'=>$result['zone_number'],
+        'warna'=>$result['color'],
+        'boundary_flag'=>$result['boundary_flag'],
+        'qc_mpa'=>round($qcMpa,4),
+        'versi'=>$classifier->version(),
+    ];
+}
 
-    return ['ic'=>round($ic,3),'jenis'=>$jenis];
+function sondir_soil_classification_mpa(float $qcMpa,float $frictionRatio): array {
+    if($qcMpa<=0||$frictionRatio<0)return ['ic'=>null,'jenis'=>'','zone_number'=>null,'warna'=>'#94a3b8','boundary_flag'=>false,'qc_mpa'=>0.0,'versi'=>sondir_soil_chart_config()['version']??'unknown'];
+    static $classifier;$classifier??=new SoilClassifier(APP_ROOT.'/config/soil_classification_zones.json');$result=$classifier->classify($qcMpa,$frictionRatio);
+    return ['ic'=>null,'jenis'=>$result['soil_type_id'],'zone_number'=>$result['zone_number'],'warna'=>$result['color'],'boundary_flag'=>$result['boundary_flag'],'qc_mpa'=>round($qcMpa,6),'versi'=>$classifier->version()];
 }
 
 /**
@@ -61,9 +80,12 @@ function sondir_soil_classification(float $qc, float $frictionRatio): array {
  * Lanau/lempung diperlakukan sebagai kohesif; pasir/kerikil non-kohesif.
  */
 function sondir_strength_classification(float $qc, string $soilType): string {
-    if ($qc <= 0 || $soilType === '') return '';
+    if ($qc <= 0 || $soilType === '' || $soilType === 'Di luar rentang klasifikasi') return '';
 
-    $cohesive=str_starts_with($soilType,'Lempung')||str_starts_with($soilType,'Lanau');
+    $cohesive=str_starts_with($soilType,'Lempung')
+        ||str_starts_with($soilType,'Lanau')
+        ||str_starts_with($soilType,'Tanah berbutir halus')
+        ||str_starts_with($soilType,'Tanah organik');
     if ($cohesive) {
         return match(true){
             $qc<5=>'Sangat Lunak',
@@ -85,11 +107,5 @@ function sondir_strength_classification(float $qc, string $soilType): string {
 }
 
 function sondir_soil_display_name(string $soilType): string {
-    return match($soilType){
-        'Pasir sangat padat / kerikil'=>'Pasir / Kerikil',
-        'Pasir - pasir berlanau'=>'Pasir berlanau',
-        'Lanau - pasir berlanau'=>'Lanau berpasir',
-        'Lempung organik / sangat lunak'=>'Lempung organik',
-        default=>$soilType,
-    };
+    return $soilType;
 }

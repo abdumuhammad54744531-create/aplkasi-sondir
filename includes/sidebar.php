@@ -35,6 +35,7 @@
 </div>
 </details>
 <?php if(can(['super_admin','pemeriksa'])):?><a href="<?=url('pengaturan/rumus.php')?>"><i class="bi bi-calculator"></i>Rumus & Pengaturan</a><?php endif;?>
+<?php if(can(['super_admin','pemeriksa'])):?><a href="<?=url('pengaturan/referensi.php')?>"><i class="bi bi-journal-bookmark"></i>Metode & Referensi</a><?php endif;?>
 <?php if(can('super_admin')):?><a href="<?=url('pengaturan/audit-log.php')?>"><i class="bi bi-clock-history"></i>Audit Log</a><a href="<?=url('pengaturan/backup.php')?>"><i class="bi bi-database-down"></i>Backup</a><?php endif;?>
 </nav><div class="sidebar-user"><small>Masuk sebagai</small><strong><?=e(ucwords(str_replace('_',' ',$_SESSION['user']['level'])))?></strong></div>
 </aside>

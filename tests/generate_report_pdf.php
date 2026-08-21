@@ -1,25 +1,17 @@
 <?php
 declare(strict_types=1);
+
 require dirname(__DIR__).'/config/bootstrap.php';
-require_login();
 require APP_ROOT.'/vendor/autoload.php';
-require __DIR__.'/_report.php';
+require APP_ROOT.'/laporan/_report.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
-$projectId=max(0,(int)($_GET['proyek_id']??0));
-if(!$projectId&&!empty($_GET['id'])){
-    $q=$pdo->prepare('SELECT proyek_id FROM titik_sondir WHERE id=?');
-    $q->execute([(int)$_GET['id']]);
-    $projectId=(int)$q->fetchColumn();
-}
-
+$projectId=max(1,(int)($argv[1]??1));
+$target=$argv[2]??(APP_ROOT.'/output/pdf/Laporan-Sondir-Model-Mix-Desain-Beton.pdf');
 $report=build_project_report_html($pdo,$projectId);
-if(!$report){
-    http_response_code(404);
-    exit('Proyek tidak ditemukan.');
-}
+if(!$report)throw new RuntimeException('Proyek tidak ditemukan.');
 
 $options=new Options();
 $options->set('isRemoteEnabled',false);
@@ -32,4 +24,6 @@ $dompdf=$render($report);
 $canvas=$dompdf->getCanvas();
 $font=$dompdf->getFontMetrics()->getFont('DejaVu Sans','normal');
 $canvas->page_text(330,814,'Halaman {PAGE_NUM} dari {PAGE_COUNT}',$font,7,[.30,.38,.46]);
-$dompdf->stream($report['filename'],['Attachment'=>false]);
+if(!is_dir(dirname($target)))mkdir(dirname($target),0775,true);
+file_put_contents($target,$dompdf->output());
+echo $target.PHP_EOL;

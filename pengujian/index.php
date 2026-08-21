@@ -24,7 +24,13 @@ $sql="SELECT t.*,p.nama_proyek,u.nama_lengkap operator,
         (SELECT COUNT(*) FROM titik_sondir point WHERE point.id=t.id OR point.parent_id=t.id) jumlah_titik,
         (SELECT COUNT(*) FROM hasil_sondir h
          JOIN titik_sondir point ON point.id=h.titik_sondir_id
-         WHERE point.id=t.id OR point.parent_id=t.id) jumlah
+         WHERE point.id=t.id OR point.parent_id=t.id) jumlah,
+        (SELECT GROUP_CONCAT(DISTINCT h.zona_sbt ORDER BY h.zona_sbt SEPARATOR ',') FROM hasil_sondir h
+         JOIN titik_sondir point ON point.id=h.titik_sondir_id
+         WHERE (point.id=t.id OR point.parent_id=t.id) AND h.zona_sbt IS NOT NULL) zona_sbt_list,
+        (SELECT COUNT(*) FROM hasil_sondir h
+         JOIN titik_sondir point ON point.id=h.titik_sondir_id
+         WHERE (point.id=t.id OR point.parent_id=t.id) AND h.zona_sbt IS NULL) zona_di_luar
       FROM titik_sondir t
       JOIN proyek p ON p.id=t.proyek_id
       JOIN users u ON u.id=t.operator_id
@@ -69,7 +75,7 @@ require APP_ROOT.'/includes/header.php';
     </div>
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Titik</th><th>Proyek</th><th>Tanggal</th><th>Operator</th><th>Data</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Titik</th><th>Proyek</th><th>Tanggal</th><th>Operator</th><th>Data</th><th>Hasil Zonasi SBT</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody>
             <?php foreach($rows as $row):?>
                 <tr>
@@ -78,6 +84,10 @@ require APP_ROOT.'/includes/header.php';
                     <td><?=tanggal_id($row['tanggal_pengujian'])?></td>
                     <td><?=e($row['operator'])?></td>
                     <td><strong><?=(int)$row['jumlah_titik']?> titik</strong><br><small class="text-secondary"><?=(int)$row['jumlah']?> baris data</small></td>
+                    <td><?php $zones=array_filter(explode(',',(string)$row['zona_sbt_list']));?>
+                        <?php if($zones):?><div class="d-flex flex-wrap gap-1"><?php foreach($zones as $zone):?><span class="badge text-bg-info">Zona <?=e($zone)?></span><?php endforeach;?></div><?php endif;?>
+                        <?php if((int)$row['zona_di_luar']>0):?><small class="d-block text-secondary mt-1"><?=(int)$row['zona_di_luar']?> data di luar diagram</small><?php elseif(!$zones):?><span class="text-secondary">Belum ada hasil</span><?php endif;?>
+                    </td>
                     <td><?=status_badge($row['status'])?></td>
                     <td>
                         <div class="d-flex flex-wrap gap-1">
@@ -91,7 +101,7 @@ require APP_ROOT.'/includes/header.php';
                     </td>
                 </tr>
             <?php endforeach;?>
-            <?php if(!$rows):?><tr><td colspan="7"><div class="empty-state"><i class="bi bi-table"></i><strong>Belum ada titik pengujian</strong><span>Buat titik sondir untuk mulai merekam data.</span></div></td></tr><?php endif;?>
+            <?php if(!$rows):?><tr><td colspan="8"><div class="empty-state"><i class="bi bi-table"></i><strong>Belum ada titik pengujian</strong><span>Buat titik sondir untuk mulai merekam data.</span></div></td></tr><?php endif;?>
             </tbody>
         </table>
     </div>
