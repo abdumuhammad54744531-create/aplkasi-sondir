@@ -18,6 +18,8 @@ Aplikasi PHP native untuk pengelolaan laboratorium, klien, proyek, alat, titik p
 
 Nilai default adalah host `127.0.0.1`, database `db_sondir`, user `root`, dan password kosong. Untuk server lain, gunakan environment variable `SONDIR_DB_HOST`, `SONDIR_DB_PORT`, `SONDIR_DB_NAME`, `SONDIR_DB_USER`, dan `SONDIR_DB_PASS`.
 
+Untuk shared hosting, salin `config/database.credentials.example.php` menjadi `config/database.credentials.php`, lalu isi host, database, username, dan password produksi. File kredensial tersebut diabaikan Git sehingga tidak ikut repository dan tidak tertimpa oleh deployment berikutnya. Environment variable tetap memiliki prioritas lebih tinggi daripada file kredensial.
+
 ## Upgrade profesional dan traceability
 
 - Hasil audit dan gap analysis: `docs/AUDIT-UPGRADE-SONDIR.md`.
