@@ -102,5 +102,9 @@ CREATE TABLE audit_log (
 CREATE TABLE login_log (
  id BIGINT AUTO_INCREMENT PRIMARY KEY,user_id INT NULL,username VARCHAR(100),status ENUM('berhasil','gagal') NOT NULL,alamat_ip VARCHAR(50),user_agent TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE password_reset_tokens (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,user_id INT NOT NULL,token_hash CHAR(64) NOT NULL UNIQUE,request_ip_hash CHAR(64) NOT NULL,expires_at DATETIME NOT NULL,used_at DATETIME NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_password_reset_user(user_id),INDEX idx_password_reset_expires(expires_at),INDEX idx_password_reset_ip_created(request_ip_hash,created_at),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT INTO users(nama_lengkap,username,email,password,level,jabatan,status) VALUES
 ('Administrator Sistem','admin','admin@sondir.test','$2y$10$aMMZjKuVN5V8B1lwSb7t/eZatKsvDFFLzXa1D.AMzi3CIuQbxSSp6','super_admin','Administrator','aktif');

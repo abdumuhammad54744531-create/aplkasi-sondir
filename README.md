@@ -50,4 +50,13 @@ Pada menu **Titik Sondir**, field **Jumlah sondir** dapat membuat beberapa titik
 
 Semua proses tulis memakai prepared statement, CSRF, session timeout, pembatasan login, dan audit log. Folder uploads memblokir eksekusi PHP. Di shared hosting, arahkan document root ke folder aplikasi, impor database, jalankan `composer install --no-dev --optimize-autoloader`, atur kredensial database, dan pastikan `uploads` serta `storage/backups` dapat ditulis oleh PHP.
 
+### Lupa password
+
+- Tautan **Lupa password?** tersedia pada halaman login untuk akun internal.
+- Di Laragon (`sondir.test`, `localhost`, atau `127.0.0.1`), tautan reset ditampilkan langsung agar pengujian tidak bergantung pada layanan email.
+- Di server produksi, tautan hanya dikirim ke email akun dan berlaku selama 30 menit. Pastikan setiap akun, terutama Super Admin, memakai alamat email yang benar dan dapat menerima pesan.
+- Pengiriman produksi menggunakan fungsi `mail()` PHP. Atur alamat pengirim melalui environment variable `SONDIR_MAIL_FROM`, misalnya `noreply@soil.labsipil.web.id`, dan aktifkan layanan email pada hosting.
+- Tabel `password_reset_tokens` sudah ada pada SQL instalasi. Pada database lama, tabel juga dibuat otomatis saat halaman lupa password pertama kali dibuka, selama user database memiliki izin `CREATE TABLE`.
+- Demi keamanan, respons permintaan tidak mengungkap apakah username/email terdaftar, permintaan dibatasi, token disimpan dalam bentuk hash, dan setiap token hanya dapat digunakan satu kali.
+
 Untuk membuat PDF, buka menu **Laporan**, lalu pilih **PDF**. Untuk backup SQL, Super Admin membuka menu **Backup**. Restore sengaja dilakukan manual melalui alat administrasi database agar tidak dapat dipicu tanpa verifikasi.
